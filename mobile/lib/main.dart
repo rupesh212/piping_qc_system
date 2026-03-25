@@ -25,18 +25,27 @@ void main() async {
   );
 }
 
-class PipingQcApp extends StatelessWidget {
+class PipingQcApp extends StatefulWidget {
   const PipingQcApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final themeProvider = context.watch<ThemeProvider>();
+  State<PipingQcApp> createState() => _PipingQcAppState();
+}
 
-    final router = GoRouter(
+class _PipingQcAppState extends State<PipingQcApp> {
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    final authProvider = context.read<AuthProvider>();
+    // Build the router once; the redirect closure re-reads auth state on
+    // every navigation attempt, so auth changes still trigger redirects.
+    _router = GoRouter(
       initialLocation: authProvider.isAuthenticated ? '/' : '/login',
+      refreshListenable: authProvider,
       redirect: (context, state) {
-        final authenticated = authProvider.isAuthenticated;
+        final authenticated = context.read<AuthProvider>().isAuthenticated;
         final onLogin = state.matchedLocation == '/login';
         if (!authenticated && !onLogin) return '/login';
         if (authenticated && onLogin) return '/';
@@ -65,6 +74,17 @@ class PipingQcApp extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  @override
+  void dispose() {
+    _router.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
 
     return MaterialApp.router(
       title: 'Piping QA/QC',
@@ -111,7 +131,7 @@ class PipingQcApp extends StatelessWidget {
         useMaterial3: true,
       ),
       themeMode: themeProvider.themeMode,
-      routerConfig: router,
+      routerConfig: _router,
     );
   }
 }

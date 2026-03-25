@@ -159,10 +159,16 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  /// Fetch anomaly / error report.
+  /// Fetch anomaly detection report.
   Future<Map<String, dynamic>> getAnomalyReport() async {
-    final response = await _get('/api/v1/dashboard/errors');
+    final response = await _get('/api/v1/dashboard/anomaly-report');
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Fetch recent validation errors list.
+  Future<List<dynamic>> getRecentErrors() async {
+    final response = await _get('/api/v1/dashboard/errors');
+    return jsonDecode(response.body) as List<dynamic>;
   }
 
   /// Check server health. Returns the parsed JSON body on success.

@@ -16,7 +16,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _summary;
-  Map<String, dynamic>? _errors;
+  List<dynamic> _recentErrors = [];
   bool _loading = false;
   String? _errorMessage;
 
@@ -36,12 +36,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final results = await Future.wait([
         api.getDashboardSummary(),
-        api.getAnomalyReport(),
+        api.getRecentErrors(),
       ]);
       if (mounted) {
         setState(() {
-          _summary = results[0];
-          _errors = results[1];
+          _summary = results[0] as Map<String, dynamic>;
+          _recentErrors = results[1] as List<dynamic>;
         });
       }
     } on ApiException catch (e) {
@@ -136,7 +136,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final totalLines = _summary?['total_lines'] ?? 0;
     final totalValidations = _summary?['total_validations'] ?? 0;
     final passRate = (_summary?['pass_rate'] ?? 0.0).toDouble();
-    final recentErrors = _errors?['errors'] as List<dynamic>? ?? [];
+    final recentErrors = _recentErrors;
 
     return ListView(
       padding: const EdgeInsets.all(16),
