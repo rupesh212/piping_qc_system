@@ -1,0 +1,118 @@
+version: "3.9"
+
+networks:
+  frontend_net:
+    driver: bridge
+  backend_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+services:
+  db:
+    image: postgres:15
+    container_name: piping_qc_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: piping_qc_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "8000:8000"
+    networks:
+      - frontend_net
+      - backend_net
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: piping_qc_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    networks:
+      - frontend_net
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: piping_qc_pgadmin
+    restart: unless-stopped
+    profiles:
+      - tools
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "5050:80"
+    networks:
+      - backend_net
+    depends_on:
+      - db
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"

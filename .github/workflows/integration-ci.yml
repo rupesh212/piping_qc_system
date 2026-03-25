@@ -1,0 +1,133 @@
+name: Integration CI
+
+on:
+  push:
+    branches: ["main", "master", "develop"]
+  pull_request:
+    branches: ["main", "master", "develop"]
+
+jobs:
+  full-stack-integration:
+    name: Full Stack Integration Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_USER=piping_user
+          POSTGRES_PASSWORD=piping_pass
+          POSTGRES_DB=piping_qc
+          SECRET_KEY=ci-integration-secret-key-minimum-32chars
+          ALGORITHM=HS256
+          ACCESS_TOKEN_EXPIRE_MINUTES=60
+          UPLOAD_DIR=/app/uploads
+          MAX_UPLOAD_SIZE_MB=50
+          PGADMIN_DEFAULT_EMAIL=admin@test.com
+          PGADMIN_DEFAULT_PASSWORD=admin
+          EOF
+
+      - name: Build and start all services
+        run: |
+          docker compose build --parallel
+          docker compose up -d db backend frontend
+          echo "Waiting for services to be healthy..."
+
+      - name: Wait for backend health
+        timeout-minutes: 3
+        run: |
+          until curl -sf http://localhost:8000/health; do
+            echo "Waiting for backend..."
+            sleep 5
+          done
+          echo "Backend is up"
+
+      - name: Wait for frontend
+        timeout-minutes: 2
+        run: |
+          until curl -sf http://localhost:3000/ > /dev/null; do
+            echo "Waiting for frontend..."
+            sleep 3
+          done
+          echo "Frontend is up"
+
+      - name: Seed database
+        run: |
+          docker compose exec -T backend python seed.py
+
+      - name: Integration — login via frontend proxy
+        run: |
+          RESPONSE=$(curl -sf -X POST http://localhost:3000/api/v1/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"admin123"}')
+          TOKEN=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+          echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+          echo "Login via nginx proxy: OK"
+
+      - name: Integration — dashboard summary via proxy
+        run: |
+          curl -sf http://localhost:3000/api/v1/dashboard/summary \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert 'total_isos' in data
+          print('Integration dashboard OK:', data)
+          "
+
+      - name: Integration — upload synthetic line list
+        run: |
+          python3 -c "
+          import openpyxl
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.append(['Line Number','Pipe Size','Spec','From Equipment','To Equipment','Fluid'])
+          ws.append(['L-INT-001','4\"','A1B','Tank-1','Pump-1','Water'])
+          ws.append(['L-INT-002','6\"','B2C','Pump-1','HX-1','Steam'])
+          wb.save('/tmp/integration_linelist.xlsx')
+          "
+          RESPONSE=$(curl -sf -X POST http://localhost:3000/api/v1/linelist/upload \
+            -H "Authorization: Bearer $TOKEN" \
+            -F "file=@/tmp/integration_linelist.xlsx")
+          echo $RESPONSE | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert data['total'] == 2
+          print('Integration linelist upload OK — total:', data['total'])
+          "
+
+      - name: Integration — upload synthetic PMS
+        run: |
+          python3 -c "
+          import openpyxl
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.append(['Spec Code','Material','Rating','Size Range','End Connection'])
+          ws.append(['A1B','Carbon Steel','150#','1\"-12\"','BW'])
+          ws.append(['B2C','Stainless 316','300#','1\"-8\"','BW'])
+          wb.save('/tmp/integration_pms.xlsx')
+          "
+          RESPONSE=$(curl -sf -X POST http://localhost:3000/api/v1/pms/upload \
+            -H "Authorization: Bearer $TOKEN" \
+            -F "file=@/tmp/integration_pms.xlsx")
+          echo $RESPONSE | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert data['total'] == 2
+          print('Integration PMS upload OK — total:', data['total'])
+          "
+
+      - name: Docker service logs on failure
+        if: failure()
+        run: |
+          echo "=== BACKEND LOGS ==="
+          docker compose logs backend --tail=50
+          echo "=== FRONTEND LOGS ==="
+          docker compose logs frontend --tail=20
+          echo "=== DB LOGS ==="
+          docker compose logs db --tail=20
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans

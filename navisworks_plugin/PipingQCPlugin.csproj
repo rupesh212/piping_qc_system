@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>PipingQCPlugin</AssemblyName>
+    <RootNamespace>PipingQCPlugin</RootNamespace>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Navisworks 2024 API references — these paths are typical installation paths -->
+    <Reference Include="Autodesk.Navisworks.Api">
+      <HintPath>C:\Program Files\Autodesk\Navisworks Manage 2024\Autodesk.Navisworks.Api.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Autodesk.Navisworks.Controls">
+      <HintPath>C:\Program Files\Autodesk\Navisworks Manage 2024\Autodesk.Navisworks.Controls.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>

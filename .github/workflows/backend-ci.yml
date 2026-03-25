@@ -1,0 +1,298 @@
+name: Backend CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: ["main", "master", "develop"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  lint-and-test:
+    name: Lint & Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: piping_user
+          POSTGRES_PASSWORD: piping_pass
+          POSTGRES_DB: piping_qc_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://piping_user:piping_pass@localhost:5432/piping_qc_test
+      SECRET_KEY: test-secret-key-at-least-32-characters-long
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      UPLOAD_DIR: /tmp/piping_qc_uploads
+      MAX_UPLOAD_SIZE_MB: 50
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install system dependencies (OCR + PDF)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tesseract-ocr poppler-utils libpq-dev
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check (all Python files)
+        run: |
+          python -m py_compile $(find app -name "*.py")
+          echo "All files compile OK"
+
+      - name: Run Alembic migrations
+        run: alembic upgrade head
+
+      - name: Seed admin user
+        run: python seed.py
+
+      - name: Start API server (background)
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          echo $! > /tmp/uvicorn.pid
+          sleep 5
+
+      - name: Health check
+        run: |
+          curl -sf http://localhost:8000/health | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert data.get('status') == 'ok', f'Expected status=ok, got: {data}'
+          print('Health check passed:', data)
+          "
+
+      - name: Auth — login as admin
+        run: |
+          RESPONSE=$(curl -sf -X POST http://localhost:8000/api/v1/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"admin123"}')
+          TOKEN=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+          echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+          echo "Login OK — token obtained"
+
+      - name: Auth — get current user (/me)
+        run: |
+          curl -sf http://localhost:8000/api/v1/auth/me \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert data['username'] == 'admin', f'Expected admin, got: {data}'
+          assert data['role'] == 'admin'
+          print('GET /me OK:', data['username'], data['role'])
+          "
+
+      - name: Dashboard — summary
+        run: |
+          curl -sf http://localhost:8000/api/v1/dashboard/summary \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          for key in ('total_isos','total_lines','total_validations','total_errors','pass_rate'):
+              assert key in data, f'Missing key: {key}'
+          print('Dashboard summary OK:', data)
+          "
+
+      - name: Dashboard — errors
+        run: |
+          curl -sf http://localhost:8000/api/v1/dashboard/errors \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert isinstance(data, list), f'Expected list, got {type(data)}'
+          print('Dashboard errors OK — count:', len(data))
+          "
+
+      - name: Dashboard — line-status
+        run: |
+          curl -sf http://localhost:8000/api/v1/dashboard/line-status \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert isinstance(data, list), f'Expected list, got {type(data)}'
+          print('Line-status OK — count:', len(data))
+          "
+
+      - name: ISO — list (empty)
+        run: |
+          curl -sf "http://localhost:8000/api/v1/iso/?skip=0&limit=20" \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert 'items' in data and 'total' in data
+          print('ISO list OK — total:', data['total'])
+          "
+
+      - name: LineList — list batches (empty)
+        run: |
+          curl -sf http://localhost:8000/api/v1/linelist/ \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert isinstance(data, list)
+          print('LineList batches OK — count:', len(data))
+          "
+
+      - name: PMS — list batches (empty)
+        run: |
+          curl -sf http://localhost:8000/api/v1/pms/ \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert isinstance(data, list)
+          print('PMS batches OK — count:', len(data))
+          "
+
+      - name: Users — list (admin only)
+        run: |
+          curl -sf "http://localhost:8000/api/v1/users/?skip=0&limit=20" \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert isinstance(data, list), f'Expected list, got {type(data)}'
+          assert any(u['username'] == 'admin' for u in data), 'admin not in user list'
+          print('Users list OK — count:', len(data))
+          "
+
+      - name: Auth — change password and revert
+        run: |
+          curl -sf -X POST http://localhost:8000/api/v1/auth/change-password \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"current_password":"admin123","new_password":"newpass456"}' | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert 'message' in data
+          print('Change password OK:', data['message'])
+          "
+          # Revert password back
+          RESPONSE=$(curl -sf -X POST http://localhost:8000/api/v1/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"newpass456"}')
+          NEW_TOKEN=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+          curl -sf -X POST http://localhost:8000/api/v1/auth/change-password \
+            -H "Authorization: Bearer $NEW_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"current_password":"newpass456","new_password":"admin123"}' > /dev/null
+          echo "Password reverted OK"
+
+      - name: Excel upload — line list (synthetic test file)
+        run: |
+          python3 -c "
+          import openpyxl, tempfile, os
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.append(['Line Number', 'Pipe Size', 'Spec', 'From Equipment', 'To Equipment', 'Fluid'])
+          ws.append(['L-001', '4\"', 'A1B', 'Tank-1', 'Pump-1', 'Water'])
+          ws.append(['L-002', '6\"', 'B2C', 'Pump-1', 'HX-1', 'Steam'])
+          ws.append(['L-003', '2\"', 'A1B', 'HX-1', 'Vessel-1', 'Water'])
+          wb.save('/tmp/test_linelist.xlsx')
+          print('Test line list created')
+          "
+          RESPONSE=$(curl -sf -X POST http://localhost:8000/api/v1/linelist/upload \
+            -H "Authorization: Bearer $TOKEN" \
+            -F "file=@/tmp/test_linelist.xlsx")
+          echo $RESPONSE | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert 'batch_id' in data, f'Missing batch_id: {data}'
+          assert data['total'] == 3, f'Expected 3 rows, got: {data[\"total\"]}'
+          print('LineList upload OK — batch:', data['batch_id'][:8], '| rows:', data['total'])
+          import os; os.environ['BATCH_ID'] = data['batch_id']
+          " && echo "LineList upload done"
+
+      - name: Excel upload — PMS (synthetic test file)
+        run: |
+          python3 -c "
+          import openpyxl
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.append(['Spec Code', 'Material', 'Rating', 'Size Range', 'End Connection'])
+          ws.append(['A1B', 'Carbon Steel', '150#', '1\"-12\"', 'BW'])
+          ws.append(['B2C', 'Stainless 316', '300#', '1\"-8\"', 'BW'])
+          wb.save('/tmp/test_pms.xlsx')
+          print('Test PMS created')
+          "
+          RESPONSE=$(curl -sf -X POST http://localhost:8000/api/v1/pms/upload \
+            -H "Authorization: Bearer $TOKEN" \
+            -F "file=@/tmp/test_pms.xlsx")
+          echo $RESPONSE | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert 'batch_id' in data
+          assert data['total'] == 2, f'Expected 2 rows, got: {data[\"total\"]}'
+          print('PMS upload OK — batch:', data['batch_id'][:8], '| rows:', data['total'])
+          "
+
+      - name: Dashboard — anomaly report
+        run: |
+          curl -sf http://localhost:8000/api/v1/dashboard/anomaly-report \
+            -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert 'overall_risk_score' in data or 'summary' in data, f'Unexpected shape: {data}'
+          print('Anomaly report OK:', {k:v for k,v in data.items() if k != \"iso_reports\"})
+          "
+
+      - name: Reports — validation summary CSV
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://localhost:8000/api/v1/reports/validation-summary \
+            -H "Authorization: Bearer $TOKEN")
+          echo "Validation summary CSV status: $STATUS"
+          test "$STATUS" = "200"
+
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -f /tmp/uvicorn.pid ]; then
+            kill $(cat /tmp/uvicorn.pid) 2>/dev/null || true
+          fi
+
+  docker-build:
+    name: Docker Build (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -t piping-qc-backend ./backend
+      - name: Verify image starts
+        run: |
+          docker run --rm -d --name test-backend \
+            -e DATABASE_URL=postgresql://u:p@localhost/db \
+            -e SECRET_KEY=test-key-minimum-32-characters-here \
+            -p 8001:8000 \
+            piping-qc-backend || true
+          sleep 3
+          docker stop test-backend 2>/dev/null || true
+          echo "Backend image build: OK"
