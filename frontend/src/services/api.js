@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Default to a relative base so the app works behind nginx with an /api proxy.
+// Set VITE_API_URL at build time (e.g. "https://api.example.com") to override.
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 const api = axios.create({
   baseURL: `${API_BASE}/api/v1`,

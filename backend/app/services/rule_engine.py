@@ -94,6 +94,11 @@ def run_validation(iso: ISODrawing, db: Session) -> list[dict[str, Any]]:
                 "Pipe size missing in ISO or Line List — cannot compare.",
                 line_list_id=line_entry.id,
             ))
+    else:
+        results.append(_make_result(
+            iso.id, "size_match", RuleResult.warning.value,
+            f"No Line List entry found for line number '{iso.line_number}' — cannot compare size.",
+        ))
 
     # --- Rule 3: pms_spec_exists ---
     spec_to_check = (line_entry.spec if line_entry else None) or iso.spec
@@ -164,6 +169,8 @@ def run_validation(iso: ISODrawing, db: Session) -> list[dict[str, Any]]:
             line_entry.mismatch_fields = [
                 r["rule_name"] for r in results if r["result"] == RuleResult.fail.value
             ]
+        else:
+            line_entry.mismatch_fields = []
         db.add(line_entry)
 
     return results

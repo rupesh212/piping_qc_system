@@ -1,7 +1,9 @@
 """
 Excel parsing service for Line List and PMS uploads.
 Handles flexible header detection and data normalization.
+Supports both .xlsx (openpyxl) and legacy .xls (xlrd) files.
 """
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -9,6 +11,13 @@ import pandas as pd
 
 def _normalize_col(col: str) -> str:
     return str(col).strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def _read_excel(file_path: str) -> pd.DataFrame:
+    """Read an Excel file, auto-selecting the engine based on file extension."""
+    ext = Path(file_path).suffix.lower()
+    engine = "xlrd" if ext == ".xls" else "openpyxl"
+    return pd.read_excel(file_path, engine=engine)
 
 
 def parse_line_list(file_path: str) -> list[dict[str, Any]]:
@@ -22,7 +31,7 @@ def parse_line_list(file_path: str) -> list[dict[str, Any]]:
       To / To Equipment
       Fluid / Service
     """
-    df = pd.read_excel(file_path, engine="openpyxl")
+    df = _read_excel(file_path)
     df.columns = [_normalize_col(c) for c in df.columns]
     df = df.dropna(how="all")
 
@@ -91,7 +100,7 @@ def parse_pms(file_path: str) -> list[dict[str, Any]]:
       Size Range
       End Connection / End Conn
     """
-    df = pd.read_excel(file_path, engine="openpyxl")
+    df = _read_excel(file_path)
     df.columns = [_normalize_col(c) for c in df.columns]
     df = df.dropna(how="all")
 
