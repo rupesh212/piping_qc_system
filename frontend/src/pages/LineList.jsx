@@ -58,7 +58,7 @@ export default function LineList() {
         .get(`/linelist/${batchId}?${params.toString()}`)
         .then((res) => {
           setEntries(res.data.items);
-          setTotal(res.data.total ?? res.data.items.length);
+          setTotal(res.data.total ?? res.data.items?.length ?? 0);
         })
         .catch((err) => {
           showToast(err.response?.data?.detail || "Failed to load entries", "error");

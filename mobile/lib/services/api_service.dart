@@ -89,19 +89,18 @@ class ApiService {
   Future<bool> login(String username, String password) async {
     final uri = Uri.parse('$baseUrl/api/v1/auth/login');
     try {
-      // OAuth2 password flow expects form-encoded body
+      // Backend expects JSON body with username and password
       final response = await http
           .post(
             uri,
             headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
+              'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
-            body: {
+            body: jsonEncode({
               'username': username,
               'password': password,
-              'grant_type': 'password',
-            },
+            }),
           )
           .timeout(const Duration(seconds: 30));
 

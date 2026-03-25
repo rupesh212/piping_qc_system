@@ -43,7 +43,7 @@ def upload_line_list(
     for e in entries:
         db.refresh(e)
 
-    return {"batch_id": batch_id, "total": len(entries), "items": entries}
+    return {"batch_id": batch_id, "total": len(entries), "skip": 0, "limit": len(entries), "items": entries}
 
 
 @router.get("/", response_model=list[dict])

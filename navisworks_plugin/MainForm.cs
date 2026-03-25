@@ -44,7 +44,7 @@ namespace PipingQCPlugin
             try
             {
                 _apiClient = new ApiClient(baseUrl);
-                bool ok = await Task.Run(() => _apiClient.LoginAsync(username, password));
+                bool ok = await _apiClient.LoginAsync(username, password);
 
                 if (ok)
                 {
@@ -81,7 +81,7 @@ namespace PipingQCPlugin
             btnRefreshDashboard.Enabled = false;
             try
             {
-                DashboardSummary summary = await Task.Run(() => _apiClient.GetDashboardSummaryAsync());
+                DashboardSummary summary = await _apiClient.GetDashboardSummaryAsync();
                 UpdateDashboardLabels(summary);
             }
             catch (Exception ex)
@@ -145,7 +145,7 @@ namespace PipingQCPlugin
             try
             {
                 int skip = page * PageSize;
-                ISOListResponse result = await Task.Run(() => _apiClient.GetISOListAsync(skip, PageSize));
+                ISOListResponse result = await _apiClient.GetISOListAsync(skip, PageSize);
 
                 _totalIsos = result.Total;
 
@@ -227,7 +227,7 @@ namespace PipingQCPlugin
 
             try
             {
-                ValidationResponse resp = await Task.Run(() => _apiClient.ValidateISOAsync(isoId));
+                ValidationResponse resp = await _apiClient.ValidateISOAsync(isoId);
 
                 if (InvokeRequired)
                     Invoke(new Action(() => DisplayValidationResults(resp)));
