@@ -5,9 +5,11 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models.iso import ISODrawing
 from app.models.line_list import LineListEntry
+from app.models.pms import PMSEntry
 from app.models.user import User
 from app.models.validation import ValidationResult, RuleResult
 from app.schemas.dashboard import DashboardSummary
+from app.services.ai_service import AnomalyDetector
 
 router = APIRouter()
 
@@ -94,3 +96,21 @@ def line_status(db: Session = Depends(get_db), _: User = Depends(get_current_use
             "error_count": error_count,
         })
     return out
+
+
+@router.get("/anomaly-report")
+def anomaly_report(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """
+    Run heuristic anomaly detection across all ISO drawings and return a summary
+    report with per-ISO risk scores and detected anomalies.
+    """
+    isos = db.query(ISODrawing).order_by(ISODrawing.created_at.desc()).all()
+    line_list_entries = db.query(LineListEntry).all()
+    pms_entries = db.query(PMSEntry).all()
+
+    detector = AnomalyDetector()
+    report = detector.analyze_all(isos, line_list_entries, pms_entries)
+    return report

@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -61,15 +62,21 @@ def list_batches(db: Session = Depends(get_db), _: User = Depends(get_current_us
 @router.get("/{batch_id}", response_model=PMSBatchOut)
 def get_batch(
     batch_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    entries = (
-        db.query(PMSEntry)
-        .filter(PMSEntry.batch_id == batch_id)
-        .order_by(PMSEntry.created_at)
-        .all()
-    )
-    if not entries:
+    query = db.query(PMSEntry).filter(PMSEntry.batch_id == batch_id)
+
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(PMSEntry.spec_code.ilike(pattern))
+
+    total = query.count()
+    if total == 0 and not search:
         raise HTTPException(status_code=404, detail="PMS batch not found")
-    return {"batch_id": batch_id, "total": len(entries), "items": entries}
+
+    entries = query.order_by(PMSEntry.created_at).offset(skip).limit(limit).all()
+    return {"batch_id": batch_id, "total": total, "skip": skip, "limit": limit, "items": entries}

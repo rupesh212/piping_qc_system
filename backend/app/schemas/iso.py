@@ -24,4 +24,6 @@ class ISOOut(BaseModel):
 
 class ISOListOut(BaseModel):
     total: int
+    skip: int
+    limit: int
     items: list[ISOOut]

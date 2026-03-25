@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
@@ -24,6 +25,11 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserUpdate(BaseModel):
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -32,3 +38,8 @@ class Token(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str

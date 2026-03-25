@@ -1,11 +1,12 @@
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_qa_or_admin
 from app.database import get_db
-from app.models.line_list import LineListEntry
+from app.models.line_list import LineListEntry, ValidationStatus
 from app.models.user import User
 from app.schemas.line_list import LineListBatchOut, LineListEntryOut
 from app.services.excel_service import parse_line_list
@@ -59,15 +60,29 @@ def list_batches(db: Session = Depends(get_db), _: User = Depends(get_current_us
 @router.get("/{batch_id}", response_model=LineListBatchOut)
 def get_batch(
     batch_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    entries = (
-        db.query(LineListEntry)
-        .filter(LineListEntry.batch_id == batch_id)
-        .order_by(LineListEntry.created_at)
-        .all()
-    )
-    if not entries:
+    query = db.query(LineListEntry).filter(LineListEntry.batch_id == batch_id)
+
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(LineListEntry.line_number.ilike(pattern))
+
+    if status:
+        try:
+            status_enum = ValidationStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status value: '{status}'")
+        query = query.filter(LineListEntry.validation_status == status_enum)
+
+    total = query.count()
+    if total == 0 and not search and not status:
         raise HTTPException(status_code=404, detail="Batch not found")
-    return {"batch_id": batch_id, "total": len(entries), "items": entries}
+
+    entries = query.order_by(LineListEntry.created_at).offset(skip).limit(limit).all()
+    return {"batch_id": batch_id, "total": total, "skip": skip, "limit": limit, "items": entries}

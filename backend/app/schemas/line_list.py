@@ -27,4 +27,6 @@ class LineListEntryOut(BaseModel):
 class LineListBatchOut(BaseModel):
     batch_id: str
     total: int
+    skip: int = 0
+    limit: int = 50
     items: list[LineListEntryOut]

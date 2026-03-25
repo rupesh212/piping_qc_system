@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api.v1 import auth, iso, line_list, pms, dashboard
+from app.api.v1 import auth, iso, line_list, pms, dashboard, users, reports
 
 app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
 
@@ -24,6 +24,8 @@ app.include_router(iso.router, prefix="/api/v1/iso", tags=["iso"])
 app.include_router(line_list.router, prefix="/api/v1/linelist", tags=["linelist"])
 app.include_router(pms.router, prefix="/api/v1/pms", tags=["pms"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 
 
 @app.get("/health")

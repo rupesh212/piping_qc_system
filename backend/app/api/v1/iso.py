@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -67,13 +68,72 @@ def upload_iso(
 @router.get("/", response_model=ISOListOut)
 def list_isos(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = 20,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    total = db.query(ISODrawing).count()
-    items = db.query(ISODrawing).order_by(ISODrawing.created_at.desc()).offset(skip).limit(limit).all()
-    return {"total": total, "items": items}
+    query = db.query(ISODrawing)
+
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(
+            ISODrawing.line_number.ilike(pattern) | ISODrawing.project_name.ilike(pattern)
+        )
+
+    if status:
+        try:
+            status_enum = ISOStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status value: '{status}'")
+        query = query.filter(ISODrawing.status == status_enum)
+
+    total = query.count()
+    items = query.order_by(ISODrawing.created_at.desc()).offset(skip).limit(limit).all()
+    return {"total": total, "skip": skip, "limit": limit, "items": items}
+
+
+@router.get("/navisworks-sync")
+def navisworks_sync(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    isos = db.query(ISODrawing).order_by(ISODrawing.created_at.desc()).all()
+
+    iso_data = []
+    for iso in isos:
+        validation_results = (
+            db.query(ValidationResult)
+            .filter(ValidationResult.iso_id == iso.id)
+            .all()
+        )
+        total_rules = len(validation_results)
+        if total_rules > 0:
+            pass_count = sum(
+                1 for vr in validation_results if vr.result == RuleResult.pass_
+            )
+            pass_rate = round((pass_count / total_rules) * 100.0, 2)
+        else:
+            pass_rate = 0.0
+
+        iso_data.append(
+            {
+                "id": str(iso.id),
+                "file_name": iso.file_name,
+                "line_number": iso.line_number or "",
+                "pipe_size": iso.pipe_size or "",
+                "spec": iso.spec or "",
+                "weld_count": iso.weld_count if iso.weld_count is not None else 0,
+                "status": iso.status.value,
+                "validation_pass_rate": pass_rate,
+            }
+        )
+
+    return {
+        "sync_timestamp": datetime.now(timezone.utc).isoformat(),
+        "isos": iso_data,
+    }
 
 
 @router.get("/{iso_id}", response_model=ISOOut)
