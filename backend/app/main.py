@@ -8,9 +8,13 @@ from app.api.v1 import auth, iso, line_list, pms, dashboard, users, reports
 
 app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
 
+# Build allowed origins list from env (comma-separated), defaulting to localhost
+_raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

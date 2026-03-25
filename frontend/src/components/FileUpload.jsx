@@ -9,6 +9,10 @@ export default function FileUpload({ onUpload, accept, label, loading }) {
     if (!file) return;
     setFileName(file.name);
     onUpload(file);
+    // Reset the input so the same file can be re-selected and triggers onChange
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
   };
 
   return (
