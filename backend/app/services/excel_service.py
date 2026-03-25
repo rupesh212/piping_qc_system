@@ -45,6 +45,15 @@ def parse_line_list(file_path: str) -> list[dict[str, Any]]:
     cols = list(df.columns)
     mapping = {key: resolve(key, cols) for key in col_map}
 
+    # Validate required columns exist
+    missing = [k for k in ("line_number", "pipe_size", "spec") if mapping[k] is None]
+    if missing:
+        raise ValueError(
+            f"Required column(s) not found in Excel file: {', '.join(missing)}. "
+            f"Expected headers: line_number/line_no, pipe_size/size, spec/piping_class. "
+            f"Found columns: {', '.join(cols)}"
+        )
+
     entries = []
     for _, row in df.iterrows():
         line_number = str(row[mapping["line_number"]]).strip() if mapping["line_number"] else ""
@@ -103,6 +112,15 @@ def parse_pms(file_path: str) -> list[dict[str, Any]]:
         return None
 
     mapping = {key: resolve(key) for key in col_map}
+
+    # Validate required columns exist
+    missing = [k for k in ("spec_code", "material") if mapping[k] is None]
+    if missing:
+        raise ValueError(
+            f"Required column(s) not found in PMS Excel file: {', '.join(missing)}. "
+            f"Expected headers: spec_code/spec/piping_class, material. "
+            f"Found columns: {', '.join(cols)}"
+        )
 
     entries = []
     for _, row in df.iterrows():

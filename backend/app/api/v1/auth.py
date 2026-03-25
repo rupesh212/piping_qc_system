@@ -55,5 +55,6 @@ def change_password(
     if len(payload.new_password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="New password must be at least 8 characters")
     current_user.hashed_password = hash_password(payload.new_password)
+    db.add(current_user)
     db.commit()
     return {"message": "Password updated successfully"}

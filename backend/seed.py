@@ -30,6 +30,9 @@ def seed():
         db.add(admin)
         db.commit()
         print("Admin user created: username=admin password=admin123")
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

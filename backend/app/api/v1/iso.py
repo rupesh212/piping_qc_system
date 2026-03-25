@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.validation import ValidationResult, RuleResult
 from app.schemas.iso import ISOListOut, ISOOut
 from app.services import ocr_service, rule_engine
+from app.services.audit_service import log_action
 from app.utils.file_utils import (
     ALLOWED_IMAGE_TYPES,
     ALLOWED_PDF_TYPES,
@@ -62,6 +63,10 @@ def upload_iso(
 
     db.commit()
     db.refresh(iso)
+
+    log_action(db, action="ISO_UPLOAD", entity_type="iso", user_id=current_user.id,
+               entity_id=str(iso.id),
+               details={"file_name": iso.file_name, "project_name": iso.project_name, "status": iso.status.value})
     return iso
 
 
@@ -152,7 +157,7 @@ def get_iso(
 def validate_iso(
     iso_id: UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_qa_or_admin),
+    current_user: User = Depends(require_qa_or_admin),
 ):
     iso = db.query(ISODrawing).filter(ISODrawing.id == iso_id).first()
     if not iso:
@@ -178,6 +183,9 @@ def validate_iso(
     fail_count = sum(1 for r in saved if r["result"] == RuleResult.fail.value)
     warn_count = sum(1 for r in saved if r["result"] == "warning")
 
+    log_action(db, action="ISO_VALIDATE", entity_type="iso", user_id=current_user.id,
+               entity_id=str(iso_id),
+               details={"passed": pass_count, "failed": fail_count, "warnings": warn_count})
     return {
         "iso_id": str(iso_id),
         "total_rules": len(saved),

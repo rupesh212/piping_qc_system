@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Optional
 from pydantic import BaseModel
 
 
@@ -11,15 +11,17 @@ class DashboardSummary(BaseModel):
 
 
 class ErrorItem(BaseModel):
+    id: str
     iso_id: str
-    line_number: str | None
+    line_number: Optional[str]
     rule_name: str
     message: str
     created_at: str
 
 
 class LineStatus(BaseModel):
-    line_number: str
+    iso_id: str
+    line_number: Optional[str]
     iso_status: str
     validation_status: str
     error_count: int

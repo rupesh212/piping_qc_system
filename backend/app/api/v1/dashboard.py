@@ -91,8 +91,8 @@ def line_status(db: Session = Depends(get_db), _: User = Depends(get_current_use
         out.append({
             "iso_id": str(iso.id),
             "line_number": iso.line_number,
-            "iso_status": iso.status,
-            "validation_status": line_entry.validation_status if line_entry else "no_line_list",
+            "iso_status": iso.status.value,
+            "validation_status": line_entry.validation_status.value if line_entry else "no_line_list",
             "error_count": error_count,
         })
     return out

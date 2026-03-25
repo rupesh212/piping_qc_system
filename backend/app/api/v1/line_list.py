@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.line_list import LineListEntry, ValidationStatus
 from app.models.user import User
 from app.schemas.line_list import LineListBatchOut, LineListEntryOut
+from app.services.audit_service import log_action
 from app.services.excel_service import parse_line_list
 from app.utils.file_utils import ALLOWED_EXCEL_TYPES, save_upload_file, validate_file_type
 
@@ -19,7 +20,7 @@ router = APIRouter()
 def upload_line_list(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: User = Depends(require_qa_or_admin),
+    current_user: User = Depends(require_qa_or_admin),
 ):
     validate_file_type(file, ALLOWED_EXCEL_TYPES)
     file_path = save_upload_file(file, "linelist")
@@ -35,6 +36,9 @@ def upload_line_list(
     batch_id = str(uuid.uuid4())
     entries = []
     for row in rows:
+        # Normalize spec to uppercase for consistent cross-system matching (PMS is uppercased)
+        if row.get("spec"):
+            row["spec"] = row["spec"].upper()
         entry = LineListEntry(batch_id=batch_id, **row)
         db.add(entry)
         entries.append(entry)
@@ -43,6 +47,8 @@ def upload_line_list(
     for e in entries:
         db.refresh(e)
 
+    log_action(db, action="LINELIST_UPLOAD", entity_type="line_list", user_id=current_user.id,
+               entity_id=batch_id, details={"file_name": file.filename, "total_entries": len(entries)})
     return {"batch_id": batch_id, "total": len(entries), "skip": 0, "limit": len(entries), "items": entries}
 
 

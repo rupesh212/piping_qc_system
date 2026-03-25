@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.pms import PMSEntry
 from app.models.user import User
 from app.schemas.pms import PMSBatchOut, PMSEntryOut
+from app.services.audit_service import log_action
 from app.services.excel_service import parse_pms
 from app.utils.file_utils import ALLOWED_EXCEL_TYPES, save_upload_file, validate_file_type
 
@@ -19,7 +20,7 @@ router = APIRouter()
 def upload_pms(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: User = Depends(require_qa_or_admin),
+    current_user: User = Depends(require_qa_or_admin),
 ):
     validate_file_type(file, ALLOWED_EXCEL_TYPES)
     file_path = save_upload_file(file, "pms")
@@ -45,6 +46,8 @@ def upload_pms(
     for e in entries:
         db.refresh(e)
 
+    log_action(db, action="PMS_UPLOAD", entity_type="pms", user_id=current_user.id,
+               entity_id=batch_id, details={"file_name": file.filename, "total_entries": len(entries)})
     return {"batch_id": batch_id, "total": len(entries), "skip": 0, "limit": len(entries), "items": entries}
 
 
