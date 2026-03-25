@@ -1,0 +1,61 @@
+name: Mobile CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-ci.yml"
+  pull_request:
+    branches: ["main", "master", "develop"]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-ci.yml"
+
+jobs:
+  flutter-analyze-and-build:
+    name: Flutter Analyze & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.19.0"
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze (static analysis)
+        working-directory: mobile
+        run: flutter analyze --no-pub
+        continue-on-error: false
+
+      - name: Check formatting
+        working-directory: mobile
+        run: dart format --output=none --set-exit-if-changed lib/
+        continue-on-error: true
+
+      - name: Run unit tests
+        working-directory: mobile
+        run: flutter test --no-pub
+        continue-on-error: true
+
+      - name: Build APK (debug)
+        working-directory: mobile
+        run: flutter build apk --debug --no-pub
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
