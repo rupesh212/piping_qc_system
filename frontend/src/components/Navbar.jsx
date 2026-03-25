@@ -1,22 +1,13 @@
-import { Link, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
-const BASE_NAV_LINKS = [
-  { to: "/", label: "Dashboard" },
-  { to: "/iso", label: "ISO Upload" },
-  { to: "/linelist", label: "Line List" },
-  { to: "/pms", label: "PMS" },
-];
+const linkClass = ({ isActive }) =>
+  `px-3 py-1 rounded transition-colors text-sm ${
+    isActive ? "bg-brand-600 text-white font-semibold" : "hover:bg-brand-700 text-blue-100"
+  }`;
 
 export default function Navbar() {
   const { user, logout } = useAuth();
-  const location = useLocation();
-
-  const navLinks = [
-    ...BASE_NAV_LINKS,
-    ...(user?.role === "admin" ? [{ to: "/users", label: "Users" }] : []),
-    { to: "/settings", label: "Settings" },
-  ];
 
   return (
     <nav className="bg-brand-900 text-white shadow-md">
@@ -24,22 +15,29 @@ export default function Navbar() {
         <div className="flex items-center gap-6">
           <span className="font-bold text-lg tracking-wide">&#9881; Piping QA/QC</span>
           <div className="flex gap-1 text-sm">
-            {navLinks.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={`px-3 py-1 rounded transition-colors ${
-                  location.pathname === link.to
-                    ? "bg-brand-600 text-white font-semibold"
-                    : "hover:bg-brand-700 text-blue-100"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
+            <NavLink to="/" end className={linkClass}>
+              Dashboard
+            </NavLink>
+            <NavLink to="/iso" className={linkClass}>
+              ISO Upload
+            </NavLink>
+            <NavLink to="/linelist" className={linkClass}>
+              Line List
+            </NavLink>
+            <NavLink to="/pms" className={linkClass}>
+              PMS
+            </NavLink>
+            {user?.role === "admin" && (
+              <NavLink to="/users" className={linkClass}>
+                Users
+              </NavLink>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          <NavLink to="/settings" className={linkClass}>
+            Settings
+          </NavLink>
           <span className="text-blue-200">
             {user?.username}{" "}
             <span className="text-blue-400 text-xs uppercase tracking-wide">
